@@ -21,15 +21,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from insightface.app import FaceAnalysis
 
-import antispoof
-
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 MODEL_PATH           = Path("trained_model/face_embeddings_insightface.pkl")
 AUDIT_LOG_PATH       = Path("audit_log.csv")
-SIMILARITY_THRESHOLD = 0.70
+SIMILARITY_THRESHOLD = 0.75
 MARGIN_REQUIRED      = 0.10
 SESSION_TTL_MINUTES  = 30
 
@@ -38,9 +36,6 @@ log.info("Loading InsightFace buffalo_l ...")
 app_face = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 app_face.prepare(ctx_id=0, det_size=(640, 640))
 log.info("✅  InsightFace ready")
-
-# ─── Anti-spoof ───────────────────────────────────────────────────────────────
-ANTISPOOF_ENABLED = antispoof.load_models()
 
 # ─── State ────────────────────────────────────────────────────────────────────
 known_embeddings: Optional[np.ndarray] = None
@@ -151,7 +146,6 @@ async def health():
     return {
         "status":      "ok",
         "model_ready": known_embeddings is not None,
-        "antispoof":   ANTISPOOF_ENABLED,
         "users":       list(dict.fromkeys(known_names)) if known_names else [],
         "threshold":   SIMILARITY_THRESHOLD,
         "margin":      MARGIN_REQUIRED,
@@ -178,23 +172,6 @@ async def authenticate(file: UploadFile = File(...)):
     log.info("━━━ Auth attempt ━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     log.info(f"  det_score : {face.det_score:.3f}")
 
-    # ── Gate 1: Liveness ─────────────────────────────────────────────────────
-    spoof = antispoof.check_liveness(img_used, face.bbox)
-
-    if spoof["enabled"] and not spoof["is_live"]:
-        write_audit("DENIED_SPOOF",
-                    liveness=spoof["real_prob"],
-                    det=float(face.det_score),
-                    reason=f"Liveness failed (real_prob={spoof['real_prob']})")
-        log.warning(f"  ❌  DENIED — SPOOF")
-        log.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        return JSONResponse(status_code=403, content={
-            "success": False, "authenticated": False,
-            "reason":  "SPOOF_DETECTED",
-            "message": f"Spoof detected (real_prob={spoof['real_prob']:.2f})",
-            "spoof":   spoof,
-        })
-
     # ── Gate 2 & 3: Face recognition ─────────────────────────────────────────
     scores  = per_person_scores(face.normed_embedding)
     ranked  = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -214,7 +191,6 @@ async def authenticate(file: UploadFile = File(...)):
         write_audit("GRANTED",
                     username=best_name,
                     similarity=best_score,
-                    liveness=spoof["real_prob"],
                     det=float(face.det_score))
         log.info(f"  ✅  GRANTED — '{best_name}'")
         log.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -227,7 +203,6 @@ async def authenticate(file: UploadFile = File(...)):
             "margin":           margin,
             "all_scores":       scores,
             "det_score":        round(float(face.det_score), 3),
-            "spoof":            spoof,
         }
 
     if not passes_threshold:
@@ -240,7 +215,6 @@ async def authenticate(file: UploadFile = File(...)):
     write_audit(outcome,
                 username=best_name,
                 similarity=best_score,
-                liveness=spoof["real_prob"],
                 det=float(face.det_score),
                 reason=detail)
     log.warning(f"  ❌  DENIED — {detail}")
@@ -253,7 +227,6 @@ async def authenticate(file: UploadFile = File(...)):
         "margin":           margin,
         "all_scores":       scores,
         "det_score":        round(float(face.det_score), 3),
-        "spoof":            spoof,
         "message":          detail,
     })
 
