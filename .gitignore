@@ -28,3 +28,4 @@ faces
 .venv
 __pycache__
 trained_model
+audit_log.csv
