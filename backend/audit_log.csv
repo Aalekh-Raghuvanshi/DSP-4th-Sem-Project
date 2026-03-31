@@ -1,9 +1,0 @@
-timestamp,outcome,username_matched,similarity_score,liveness_score,det_score,reason,ip
-2026-03-31 04:37:16,GRANTED,Aalekh Raghuvanshi,0.743,0.0,0.7632,,
-2026-03-31 04:37:38,GRANTED,Aalekh Raghuvanshi,0.7053,0.0,0.7787,,
-2026-03-31 04:38:00,DENIED_MISMATCH,Aalekh Raghuvanshi,0.6284,0.0,0.8603,Score 62.8% below threshold 70%,
-2026-03-31 04:38:15,DENIED_MISMATCH,Aalekh Raghuvanshi,0.62,0.0,0.8268,Score 62.0% below threshold 70%,
-2026-03-31 04:38:33,DENIED_MISMATCH,Aalekh Raghuvanshi,0.7087,0.0,0.8085,Score 70.9% below threshold 72%,
-2026-03-31 04:38:42,GRANTED,Aalekh Raghuvanshi,0.7703,0.0,0.8,,
-2026-03-31 04:38:56,DENIED_MISMATCH,Aalekh Raghuvanshi,0.7076,0.0,0.7192,Score 70.8% below threshold 72%,
-2026-03-31 04:39:05,GRANTED,Aalekh Raghuvanshi,0.7843,0.0,0.8163,,
