@@ -71,7 +71,7 @@ Authentication (`main.py`):
 - Tries original + horizontally-flipped (handles webcam mirror)
 - Extracts `normed_embedding` the exact same way as training
 - Computes `dot(probe, all_stored)` = cosine similarity
-- Returns best match if score ≥ 0.25
+- Returns best match if score passes the configured threshold
 
 ---
 
@@ -81,11 +81,11 @@ Edit `SIMILARITY_THRESHOLD` in `backend/main.py`:
 
 | Value | Effect |
 |---|---|
-| `0.20` | Easier — good if same-person scores are low |
-| `0.25` | Default — balanced |
-| `0.35` | Stricter — fewer false positives |
+| `0.60` | Easier — good if same-person scores are low |
+| `0.75` | Current default — balanced |
+| `0.85` | Stricter — fewer false positives |
 
-When you click "Scan Face" and it fails, the UI shows the exact similarity score per enrolled person. Use that to decide if you need to lower the threshold or retrain with better photos.
+When a scan fails, the UI shows the exact similarity score per enrolled person. Use that to decide if you need to lower the threshold or retrain with better photos.
 
 ---
 

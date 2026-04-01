@@ -1,19 +1,3 @@
-# ==================== train_model.py ====================
-"""
-Run this once (or whenever you add new faces) to build the recognition model.
-
-Folder layout:
-    training_data/
-    ├── alice/
-    │   ├── photo1.jpg
-    │   └── photo2.jpg
-    └── bob/
-        └── bob.png
-
-Usage:
-    python train_model.py
-"""
-
 import cv2
 import os
 import numpy as np

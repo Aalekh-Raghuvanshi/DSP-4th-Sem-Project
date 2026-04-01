@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion as Motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 import "./App.css";
 
@@ -34,7 +34,7 @@ function SignalRow({ label, value, max = 1, pass }) {
     <div className="sig-row">
       <span className="sig-label">{label}</span>
       <div className="sig-track">
-        <motion.div
+        <Motion.div
           className={`sig-fill ${pass ? "pass" : "fail"}`}
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
@@ -61,7 +61,6 @@ function AuditLogModal({ onClose }) {
 
   const outcomeStyle = (o) => {
     if (o === "GRANTED")          return { color: "var(--green)",  bg: "rgba(0,255,157,.08)",  icon: "✓" };
-    if (o === "DENIED_SPOOF")     return { color: "var(--danger)", bg: "rgba(255,60,92,.08)",  icon: "⊘" };
     if (o === "DENIED_MISMATCH")  return { color: "#ffc46c",       bg: "rgba(255,196,108,.08)",icon: "✗" };
     if (o === "DENIED_AMBIGUOUS") return { color: "#ffc46c",       bg: "rgba(255,196,108,.08)",icon: "?" };
     if (o === "NO_FACE")          return { color: "var(--muted)",  bg: "rgba(72,96,126,.08)",  icon: "—" };
@@ -70,19 +69,18 @@ function AuditLogModal({ onClose }) {
 
   const stats = {
     granted:  entries.filter(e => e.outcome === "GRANTED").length,
-    spoof:    entries.filter(e => e.outcome === "DENIED_SPOOF").length,
     mismatch: entries.filter(e => e.outcome === "DENIED_MISMATCH" || e.outcome === "DENIED_AMBIGUOUS").length,
   };
 
   return (
-    <motion.div
+    <Motion.div
       className="audit-backdrop"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
     >
-      <motion.div
+      <Motion.div
         className="audit-modal"
         initial={{ opacity: 0, y: 40, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -102,10 +100,6 @@ function AuditLogModal({ onClose }) {
             <div className="audit-stat granted">
               <span className="stat-num">{stats.granted}</span>
               <span className="stat-label">Granted</span>
-            </div>
-            <div className="audit-stat spoof">
-              <span className="stat-num">{stats.spoof}</span>
-              <span className="stat-label">Spoof blocked</span>
             </div>
             <div className="audit-stat mismatch">
               <span className="stat-num">{stats.mismatch}</span>
@@ -130,7 +124,6 @@ function AuditLogModal({ onClose }) {
                   <th>Outcome</th>
                   <th>User</th>
                   <th>Similarity</th>
-                  <th>Liveness</th>
                   <th>Reason</th>
                 </tr>
               </thead>
@@ -138,7 +131,7 @@ function AuditLogModal({ onClose }) {
                 {entries.map((e, i) => {
                   const s = outcomeStyle(e.outcome);
                   return (
-                    <motion.tr
+                    <Motion.tr
                       key={i}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -155,19 +148,16 @@ function AuditLogModal({ onClose }) {
                       <td className="audit-num">
                         {e.similarity_score > 0 ? `${(e.similarity_score * 100).toFixed(1)}%` : "—"}
                       </td>
-                      <td className="audit-num">
-                        {e.liveness_score > 0 ? `${(e.liveness_score * 100).toFixed(0)}%` : "—"}
-                      </td>
                       <td className="audit-reason">{e.reason || "—"}</td>
-                    </motion.tr>
+                    </Motion.tr>
                   );
                 })}
               </tbody>
             </table>
           )}
         </div>
-      </motion.div>
-    </motion.div>
+      </Motion.div>
+    </Motion.div>
   );
 }
 
@@ -175,6 +165,8 @@ function AuditLogModal({ onClose }) {
 function Dashboard({ user, token, onLock }) {
   const [tick, setTick]         = useState(new Date());
   const [showAudit, setShowAudit] = useState(false);
+  const [showTeam, setShowTeam] = useState(false);
+  const teamMembers = ["Aalekh Raghuvanshi", "Prathyusha Reddy", "Reena Akshaya", "Shreya Keshri"];
 
   useEffect(() => {
     const id = setInterval(() => setTick(new Date()), 1000);
@@ -185,18 +177,13 @@ function Dashboard({ user, token, onLock }) {
   const date = tick.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
 
   const tiles = [
-    { icon: "◈", label: "Analytics",  color: "#00c8ff" },
-    { icon: "⬡", label: "Settings",   color: "#7c6cfc" },
-    { icon: "◉", label: "Reports",    color: "#00ff9d" },
-    { icon: "⬛", label: "Data Vault", color: "#fc6c8f" },
-    { icon: "◇", label: "Team",       color: "#ffc46c" },
-    { icon: "▲", label: "Deploy",     color: "#6cfcf0" },
+    { icon: "◇", label: "Team", color: "#ffc46c", onClick: () => setShowTeam(true) },
     { icon: "📋", label: "Audit Log",  color: "#a78bfa", onClick: () => setShowAudit(true) },
   ];
 
   return (
     <>
-      <motion.div
+      <Motion.div
         className="dashboard"
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -214,29 +201,29 @@ function Dashboard({ user, token, onLock }) {
 
         {/* Welcome */}
         <div className="dash-welcome">
-          <motion.p className="dash-time" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
+          <Motion.p className="dash-time" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
             {time}
-          </motion.p>
-          <motion.p className="dash-date" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
+          </Motion.p>
+          <Motion.p className="dash-date" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
             {date}
-          </motion.p>
-          <motion.h1 className="dash-greeting" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          </Motion.p>
+          <Motion.h1 className="dash-greeting" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
             Welcome back, <span className="dash-name">{user}</span>
-          </motion.h1>
-          <motion.p className="dash-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
-            Identity verified · Anti-deepfake passed · Session active
-          </motion.p>
+          </Motion.h1>
+          <Motion.p className="dash-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
+            Identity verified · Session active
+          </Motion.p>
         </div>
 
         {/* App tiles */}
-        <motion.div
+        <Motion.div
           className="dash-grid"
           initial="hidden"
           animate="visible"
           variants={{ visible: { transition: { staggerChildren: 0.07, delayChildren: 0.5 } } }}
         >
           {tiles.map((t) => (
-            <motion.div
+            <Motion.div
               key={t.label}
               className="dash-tile"
               style={{ "--tile-accent": t.color, cursor: t.onClick ? "pointer" : "default" }}
@@ -247,19 +234,45 @@ function Dashboard({ user, token, onLock }) {
               <span className="tile-icon" style={{ color: t.color }}>{t.icon}</span>
               <span className="tile-label">{t.label}</span>
               <div className="tile-glow" style={{ background: t.color }} />
-            </motion.div>
+            </Motion.div>
           ))}
-        </motion.div>
+        </Motion.div>
 
         {/* Session token */}
-        <motion.div className="dash-token-row" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}>
+        <Motion.div className="dash-token-row" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}>
           <span className="token-tag">SESSION</span>
           <code className="token-val">{token}</code>
-        </motion.div>
-      </motion.div>
+        </Motion.div>
+      </Motion.div>
 
       {/* Audit log modal */}
       <AnimatePresence>
+        {showTeam && (
+          <Motion.div
+            className="audit-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowTeam(false)}
+          >
+            <Motion.div
+              className="team-modal"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.22 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button className="audit-close" onClick={() => setShowTeam(false)}>✕</button>
+              <h2 className="audit-title">Team</h2>
+              <div className="team-members">
+                {teamMembers.map((member) => (
+                  <div key={member} className="team-member-card">{member}</div>
+                ))}
+              </div>
+            </Motion.div>
+          </Motion.div>
+        )}
         {showAudit && <AuditLogModal onClose={() => setShowAudit(false)} />}
       </AnimatePresence>
     </>
@@ -269,7 +282,7 @@ function Dashboard({ user, token, onLock }) {
 // ─── Landing screen (before camera opens) ────────────────────────────────────
 function Landing({ onStart, enrolled, backendDown }) {
   return (
-    <motion.div
+    <Motion.div
       className="landing"
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
@@ -287,12 +300,11 @@ function Landing({ onStart, enrolled, backendDown }) {
 
       <div className="landing-chips">
         <span className="chip">ArcFace 512-d</span>
-        <span className="chip">LBP Liveness</span>
-        <span className="chip">FFT Deepfake Check</span>
-        <span className="chip">Anti-Spoof</span>
+        <span className="chip">Cosine Similarity</span>
+        <span className="chip">Session Audit Log</span>
       </div>
 
-      <motion.button
+      <Motion.button
         className="start-btn"
         onClick={onStart}
         disabled={enrolled.length === 0 || backendDown}
@@ -300,16 +312,17 @@ function Landing({ onStart, enrolled, backendDown }) {
         whileTap={{ scale: 0.97 }}
       >
         Authenticate
-      </motion.button>
-    </motion.div>
+      </Motion.button>
+    </Motion.div>
   );
 }
 
 // ─── Camera + auth screen ─────────────────────────────────────────────────────
-function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
+function CameraScreen({ onSuccess, onCancel }) {
   const webcamRef               = useRef(null);
+  const autoScanStartedRef      = useRef(false);
   const [camReady, setCamReady] = useState(false);
-  const [phase, setPhase]       = useState("ready");   // ready|countdown|analyzing|fail|deepfake
+  const [phase, setPhase]       = useState("ready");
   const [countdown, setCountdown] = useState(null);
   const [result, setResult]     = useState(null);
 
@@ -353,18 +366,29 @@ function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
     } catch (err) {
       const resp = err.response?.data ?? { message: err.message };
       setResult(resp);
-      const reason = resp?.reason;
-      if (reason === "SPOOF_DETECTED") setPhase("spoof");
-      else setPhase("fail");
+      setPhase("fail");
     }
   }, [camReady, phase, onSuccess]);
 
-  const retry = () => { setPhase("ready"); setResult(null); };
+  useEffect(() => {
+    if (!camReady || phase !== "ready" || autoScanStartedRef.current) return;
+    const timeoutId = setTimeout(() => {
+      autoScanStartedRef.current = true;
+      shoot();
+    }, 0);
+    return () => clearTimeout(timeoutId);
+  }, [camReady, phase, shoot]);
 
-  const overlayPhase = { ready: "idle", countdown: "scanning", analyzing: "scanning", fail: "fail", spoof: "deepfake" }[phase] ?? "idle";
+  const retry = () => {
+    autoScanStartedRef.current = false;
+    setPhase("ready");
+    setResult(null);
+  };
+
+  const overlayPhase = { ready: "idle", countdown: "scanning", analyzing: "scanning", fail: "fail" }[phase] ?? "idle";
 
   return (
-    <motion.div
+    <Motion.div
       className="cam-screen"
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -378,7 +402,6 @@ function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
           {phase === "countdown" && "Hold still…"}
           {phase === "analyzing" && "Analyzing…"}
           {phase === "fail"      && "Not recognised"}
-          {phase === "spoof"     && "Spoof blocked"}
         </span>
       </div>
 
@@ -407,7 +430,7 @@ function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
         {/* Countdown number */}
         <AnimatePresence>
           {countdown !== null && (
-            <motion.div
+            <Motion.div
               key={countdown}
               className="countdown"
               initial={{ scale: 1.9, opacity: 0 }}
@@ -416,7 +439,7 @@ function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
               transition={{ duration: 0.22 }}
             >
               {countdown}
-            </motion.div>
+            </Motion.div>
           )}
         </AnimatePresence>
 
@@ -427,37 +450,33 @@ function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
           </div>
         )}
 
-        {/* Fail / spoof badge */}
-        {(phase === "fail" || phase === "spoof") && (
-          <motion.div
+        {/* Fail badge */}
+        {phase === "fail" && (
+          <Motion.div
             className="cam-badge fail-badge"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            {phase === "spoof" ? "⊘ Spoof / photo blocked" : "✗ Face not recognised"}
-          </motion.div>
+            ✗ Face not recognised
+          </Motion.div>
         )}
       </div>
 
       {/* Action button */}
       <AnimatePresence mode="wait">
         {phase === "ready" && (
-          <motion.button
-            key="scan"
-            className="auth-btn"
-            onClick={shoot}
-            disabled={!camReady}
+          <Motion.div
+            key="scan-status"
+            className="auth-btn auto-scan-status"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
           >
-            {camReady ? "Scan Face" : "Starting camera…"}
-          </motion.button>
+            {camReady ? "Starting scan automatically…" : "Starting camera…"}
+          </Motion.div>
         )}
-        {(phase === "fail" || phase === "spoof") && (
-          <motion.button
+        {phase === "fail" && (
+          <Motion.button
             key="retry"
             className="auth-btn btn-danger"
             onClick={retry}
@@ -468,38 +487,14 @@ function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
             whileTap={{ scale: 0.97 }}
           >
             Try Again
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* Spoof rejection card */}
-      <AnimatePresence>
-        {result && phase === "spoof" && (
-          <motion.div
-            className="detail-card phase-spoof"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            style={{ overflow: "hidden" }}
-          >
-            <p className="detail-reason spoof-reason">⊘ Photo / screen attack blocked</p>
-            <p className="detail-hint">
-              MiniFASNet detected a non-live face.
-              Real probability: {result.spoof ? (result.spoof.real_prob * 100).toFixed(1) : "—"}%
-              (need ≥55% to pass).
-            </p>
-            <p className="detail-hint">
-              If you are live and this keeps failing, ensure your face is well-lit
-              and fully visible — avoid harsh backlighting.
-            </p>
-          </motion.div>
+          </Motion.button>
         )}
       </AnimatePresence>
 
       {/* Face mismatch detail card */}
       <AnimatePresence>
         {result && phase === "fail" && (
-          <motion.div
+          <Motion.div
             className="detail-card phase-fail"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -529,10 +524,10 @@ function CameraScreen({ onSuccess, onDeepfake, onCancel }) {
                 {result.det_score < 0.5 ? " — try better lighting or move closer" : ""}
               </p>
             )}
-          </motion.div>
+          </Motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </Motion.div>
   );
 }
 
@@ -574,7 +569,7 @@ export default function App() {
           <span className="logo-icon">⬡</span>
           <span className="logo-text">NEURALGATE</span>
         </div>
-        <div className="header-tag">Anti-Deepfake · InsightFace · v2.1</div>
+        <div className="header-tag">InsightFace · v2.1</div>
       </header>
 
       <main className="main">

@@ -23,7 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-antispoof_tester.py
 faces
 .venv
 __pycache__

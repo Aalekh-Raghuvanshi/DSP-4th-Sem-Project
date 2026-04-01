@@ -82,7 +82,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
 .corner.br{bottom:14px;right:14px;border-width:0 2px 2px 0}
 .phase-idle     .corner,.phase-scanning .corner{border-color:var(--accent)}
 .phase-success  .corner{border-color:var(--green)}
-.phase-fail     .corner,.phase-deepfake .corner{border-color:var(--danger)}
+.phase-fail     .corner{border-color:var(--danger)}
 .scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);box-shadow:0 0 12px var(--accent);animation:scan 2s ease-in-out infinite}
 @keyframes scan{0%{top:8%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:92%;opacity:0}}
 
@@ -106,9 +106,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
 /* Detail card */
 .detail-card{width:100%;border-radius:var(--r);padding:16px 20px;display:flex;flex-direction:column;gap:12px}
 .detail-card.phase-fail{background:var(--surface2);border:1px solid var(--border)}
-.detail-card.phase-spoof{background:rgba(255,60,92,.07);border:1px solid rgba(255,60,92,.35)}
 .detail-reason{font-family:var(--mono);font-size:12px;color:var(--danger)}
-.spoof-reason{font-size:13px;font-weight:700;letter-spacing:.04em}
 .detail-hint{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6}
 
 /* Signal bars */
@@ -121,11 +119,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
 .sig-fill.pass{background:var(--green);box-shadow:0 0 8px rgba(0,255,157,.4)}
 .sig-fill.fail{background:var(--danger);box-shadow:0 0 8px rgba(255,60,92,.4)}
 .sig-val{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
-
-/* Enrolled chips (shared) */
-.enrolled-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
-.enrolled-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.14em}
-.enrolled-chip{font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--border-b);background:var(--accent-d);padding:4px 12px;border-radius:2px}
 
 /* ═══════════════════════════════════════════════
    DASHBOARD
@@ -147,7 +140,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
 .dash-name{color:var(--accent)}
 .dash-sub{font-family:var(--mono);font-size:12px;color:var(--muted)}
 
-.dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px;padding:36px 40px;max-width:960px;margin:0 auto;width:100%}
+.dash-grid{display:grid;grid-template-columns:repeat(2,minmax(170px,220px));justify-content:center;gap:16px;padding:36px 40px;max-width:960px;margin:0 auto;width:100%}
 .dash-tile{position:relative;overflow:hidden;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:28px 20px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .2s}
 .dash-tile:hover{border-color:var(--tile-accent,var(--accent))}
 .tile-icon{font-size:28px;line-height:1}
@@ -172,15 +165,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
 /* ═══════════════════════════════════════════════
    AUDIT LOG
 ═══════════════════════════════════════════════ */
-
-/* Audit button in topbar */
-.audit-btn{
-  font-family:var(--mono);font-size:12px;color:var(--accent);
-  background:none;border:1px solid var(--border-b);
-  padding:7px 16px;border-radius:var(--r);cursor:pointer;
-  transition:all .2s;margin-left:auto;
-}
-.audit-btn:hover{background:var(--accent-d)}
 
 /* Backdrop */
 .audit-backdrop{
@@ -224,11 +208,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
   min-width:90px;
 }
 .audit-stat.granted{border-color:rgba(0,255,157,.2);background:rgba(0,255,157,.05)}
-.audit-stat.spoof  {border-color:rgba(255,60,92,.2); background:rgba(255,60,92,.05)}
 .audit-stat.mismatch{border-color:rgba(255,196,108,.2);background:rgba(255,196,108,.05)}
 .stat-num{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1}
 .audit-stat.granted  .stat-num{color:var(--green)}
-.audit-stat.spoof    .stat-num{color:var(--danger)}
 .audit-stat.mismatch .stat-num{color:#ffc46c}
 .stat-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em}
 
@@ -267,6 +249,41 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
   border:1px solid currentColor;
   font-size:10px;font-weight:700;letter-spacing:.06em;
   white-space:nowrap;
+}
+
+.auto-scan-status{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:default;
+}
+
+.team-modal{
+  position:relative;
+  width:100%;
+  max-width:420px;
+  background:var(--surface);
+  border:1px solid var(--border-b);
+  border-radius:8px;
+  box-shadow:0 24px 80px rgba(0,0,0,.6);
+  padding:28px;
+}
+
+.team-members{
+  display:grid;
+  gap:12px;
+  margin-top:20px;
+}
+
+.team-member-card{
+  font-family:var(--mono);
+  font-size:12px;
+  color:var(--text);
+  letter-spacing:.06em;
+  padding:14px 16px;
+  border:1px solid rgba(255,196,108,.24);
+  background:rgba(255,196,108,.08);
+  border-radius:var(--r);
 }
 
 @media(max-width:600px){
