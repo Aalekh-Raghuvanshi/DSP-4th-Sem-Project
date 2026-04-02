@@ -1,5 +1,5 @@
 # NeuralGate v3 · Face Authentication
-
+## Face-detection based authentication to protect against deepfake attacks
 ## Quick Start
 
 ### Step 1 — Add your face photos
@@ -14,7 +14,7 @@ backend/faces/
     └── photo.jpg
 ```
 
-Use clear, well-lit, **frontal face** photos. JPG/PNG/BMP/WEBP all work.
+Use clear, well-lit, **frontal face** photos of the person.Any format like JPG/PNG/BMP/WEBP will work.
 
 ---
 
@@ -33,7 +33,7 @@ Output:
     Saved to : trained_model/face_embeddings_insightface.pkl
 ```
 
-Re-run this whenever you add or change photos.
+Re-run this whenever you add or change photos.So that the changes will be updated.
 
 ---
 
