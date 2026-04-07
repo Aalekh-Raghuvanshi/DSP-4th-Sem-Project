@@ -1,5 +1,6 @@
 import csv
 from app.config import AUDIT_LOG_PATH
+from app.utils.audit import write_audit
 
 
 async def get_audit_log(limit: int = 100):
@@ -22,3 +23,9 @@ async def get_audit_log(limit: int = 100):
                 r[field] = 0.0
 
     return {"entries": rows, "total": total}
+
+
+async def log_blink_timeout():
+    reason = "No blink detected within 6 seconds; returned to homepage"
+    write_audit("DENIED_TIMEOUT", reason=reason)
+    return {"success": True, "logged": True, "outcome": "DENIED_TIMEOUT", "reason": reason}

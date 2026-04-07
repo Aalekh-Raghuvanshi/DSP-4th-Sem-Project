@@ -17,6 +17,7 @@ const BLINK_MIN_BASELINE = 0.18;
 const BLINK_CLOSED_RATIO = 0.72;
 const BLINK_OPEN_RATIO = 0.9;
 const BLINK_MIN_CLOSED_FRAMES = 2;
+const BLINK_TIMEOUT_MS = 6000;
 
 function b64ToBlob(b64) {
   const [header, data] = b64.split(",");
@@ -93,6 +94,7 @@ function AuditLogModal({ onClose }) {
   const outcomeStyle = (o) => {
     if (o === "GRANTED")          return { color: "var(--green)",  bg: "rgba(0,255,157,.08)",  icon: "✓" };
     if (o === "DENIED_LIVENESS")  return { color: "var(--danger)", bg: "rgba(255,60,92,.08)",  icon: "!" };
+    if (o === "DENIED_TIMEOUT")   return { color: "var(--danger)", bg: "rgba(255,60,92,.08)",  icon: "⌛" };
     if (o === "DENIED_MISMATCH")  return { color: "#ffc46c",       bg: "rgba(255,196,108,.08)",icon: "✗" };
     if (o === "DENIED_AMBIGUOUS") return { color: "#ffc46c",       bg: "rgba(255,196,108,.08)",icon: "?" };
     if (o === "NO_FACE")          return { color: "var(--muted)",  bg: "rgba(72,96,126,.08)",  icon: "—" };
@@ -101,7 +103,7 @@ function AuditLogModal({ onClose }) {
 
   const stats = {
     granted:  entries.filter(e => e.outcome === "GRANTED").length,
-    mismatch: entries.filter(e => ["DENIED_MISMATCH", "DENIED_AMBIGUOUS", "DENIED_LIVENESS"].includes(e.outcome)).length,
+    denied: entries.filter(e => ["DENIED_MISMATCH", "DENIED_AMBIGUOUS", "DENIED_LIVENESS", "DENIED_TIMEOUT", "NO_FACE"].includes(e.outcome)).length,
   };
 
   return (
@@ -134,8 +136,8 @@ function AuditLogModal({ onClose }) {
               <span className="stat-label">Granted</span>
             </div>
             <div className="audit-stat mismatch">
-              <span className="stat-num">{stats.mismatch}</span>
-              <span className="stat-label">Mismatch</span>
+              <span className="stat-num">{stats.denied}</span>
+              <span className="stat-label">Denied</span>
             </div>
           </div>
 
@@ -351,9 +353,10 @@ function Landing({ onStart, enrolled, backendDown }) {
 }
 
 // ─── Camera + auth screen ─────────────────────────────────────────────────────
-function CameraScreen({ onSuccess, onCancel }) {
+function CameraScreen({ onSuccess, onCancel, onTimeout }) {
   const webcamRef = useRef(null);
   const autoScanStartedRef = useRef(false);
+  const timeoutHandledRef = useRef(false);
   const faceLandmarkerRef = useRef(null);
   const animationFrameRef = useRef(null);
   const blinkStateRef = useRef({
@@ -595,8 +598,28 @@ function CameraScreen({ onSuccess, onCancel }) {
     return () => clearTimeout(timeoutId);
   }, [camReady, liveness.passed, phase, shoot]);
 
+  useEffect(() => {
+    if (!camReady || phase !== "ready" || liveness.passed || timeoutHandledRef.current) return undefined;
+
+    const timeoutId = setTimeout(async () => {
+      if (timeoutHandledRef.current) return;
+      timeoutHandledRef.current = true;
+
+      try {
+        await axios.post(`${API}/audit-log/blink-timeout`);
+      } catch (error) {
+        console.error("Failed to write blink timeout audit entry", error);
+      } finally {
+        onTimeout();
+      }
+    }, BLINK_TIMEOUT_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [camReady, liveness.passed, onTimeout, phase]);
+
   const retry = () => {
     autoScanStartedRef.current = false;
+    timeoutHandledRef.current = false;
     setPhase("ready");
     setResult(null);
     resetBlinkTracking();
@@ -802,6 +825,7 @@ export default function App() {
               key="camera"
               onSuccess={handleSuccess}
               onCancel={() => setScreen("landing")}
+              onTimeout={reset}
             />
           )}
 
