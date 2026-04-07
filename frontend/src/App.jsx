@@ -17,7 +17,11 @@ const BLINK_MIN_BASELINE = 0.18;
 const BLINK_CLOSED_RATIO = 0.72;
 const BLINK_OPEN_RATIO = 0.9;
 const BLINK_MIN_CLOSED_FRAMES = 2;
+const BLINK_MIN_DROP = 0.045;
 const BLINK_TIMEOUT_MS = 6000;
+const FACE_STABILITY_FRAMES = 10;
+const FACE_CENTER_JITTER_MAX = 0.035;
+const FACE_SIZE_JITTER_MAX = 0.12;
 
 function b64ToBlob(b64) {
   const [header, data] = b64.split(",");
@@ -45,6 +49,52 @@ function averageEyeAspectRatio(landmarks) {
   const leftEar = eyeAspectRatio(landmarks, EYE_INDICES.left);
   const rightEar = eyeAspectRatio(landmarks, EYE_INDICES.right);
   return (leftEar + rightEar) / 2;
+}
+
+function getFaceBounds(landmarks) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const point of landmarks) {
+    if (point.x < minX) minX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y > maxY) maxY = point.y;
+  }
+
+  return {
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function isFaceStable(samples) {
+  if (samples.length < FACE_STABILITY_FRAMES) return false;
+
+  const centersX = samples.map((sample) => sample.centerX);
+  const centersY = samples.map((sample) => sample.centerY);
+  const widths = samples.map((sample) => sample.width);
+  const heights = samples.map((sample) => sample.height);
+
+  const jitterX = Math.max(...centersX) - Math.min(...centersX);
+  const jitterY = Math.max(...centersY) - Math.min(...centersY);
+  const minWidth = Math.min(...widths);
+  const maxWidth = Math.max(...widths);
+  const minHeight = Math.min(...heights);
+  const maxHeight = Math.max(...heights);
+  const widthDelta = minWidth > 0 ? (maxWidth - minWidth) / minWidth : Infinity;
+  const heightDelta = minHeight > 0 ? (maxHeight - minHeight) / minHeight : Infinity;
+
+  return (
+    jitterX <= FACE_CENTER_JITTER_MAX &&
+    jitterY <= FACE_CENTER_JITTER_MAX &&
+    widthDelta <= FACE_SIZE_JITTER_MAX &&
+    heightDelta <= FACE_SIZE_JITTER_MAX
+  );
 }
 
 // ─── Scan overlay corners + scan line ─────────────────────────────────────────
@@ -363,6 +413,7 @@ function CameraScreen({ onSuccess, onCancel, onTimeout }) {
     closedFrames: 0,
     blinkCount: 0,
     openSamples: [],
+    faceSamples: [],
     baselineEar: 0,
     eyesClosed: false,
   });
@@ -391,11 +442,12 @@ function CameraScreen({ onSuccess, onCancel, onTimeout }) {
     });
   }, []);
 
-  const resetBlinkTracking = useCallback((message = "Blink once to continue.") => {
+  const resetBlinkTracking = useCallback(() => {
     blinkStateRef.current = {
       closedFrames: 0,
       blinkCount: 0,
       openSamples: [],
+      faceSamples: [],
       baselineEar: 0,
       eyesClosed: false,
     };
@@ -505,6 +557,7 @@ function CameraScreen({ onSuccess, onCancel, onTimeout }) {
       if (!landmarks) {
         blinkStateRef.current.closedFrames = 0;
         blinkStateRef.current.openSamples = [];
+        blinkStateRef.current.faceSamples = [];
         blinkStateRef.current.baselineEar = 0;
         blinkStateRef.current.eyesClosed = false;
         updateLiveness({
@@ -518,7 +571,26 @@ function CameraScreen({ onSuccess, onCancel, onTimeout }) {
       }
 
       const ear = averageEyeAspectRatio(landmarks);
+      const faceBounds = getFaceBounds(landmarks);
       const blinkState = blinkStateRef.current;
+      blinkState.faceSamples = [...blinkState.faceSamples, faceBounds].slice(-FACE_STABILITY_FRAMES);
+      const faceStable = isFaceStable(blinkState.faceSamples);
+
+      if (!faceStable) {
+        blinkState.openSamples = [];
+        blinkState.closedFrames = 0;
+        blinkState.eyesClosed = false;
+        blinkState.baselineEar = 0;
+        updateLiveness({
+          ready: true,
+          passed: false,
+          blinkCount: blinkState.blinkCount,
+          message: "Hold your face still and look at the camera.",
+        });
+        animationFrameRef.current = requestAnimationFrame(trackBlink);
+        return;
+      }
+
       const samples = [...blinkState.openSamples, ear].slice(-BLINK_CALIBRATION_FRAMES);
       blinkState.openSamples = samples;
 
@@ -536,9 +608,10 @@ function CameraScreen({ onSuccess, onCancel, onTimeout }) {
       const baselineEar = Math.max(BLINK_MIN_BASELINE, Math.max(...samples));
       const closedThreshold = baselineEar * BLINK_CLOSED_RATIO;
       const openThreshold = baselineEar * BLINK_OPEN_RATIO;
+      const closureDrop = baselineEar - ear;
       blinkState.baselineEar = baselineEar;
 
-      if (ear <= closedThreshold) {
+      if (ear <= closedThreshold && closureDrop >= BLINK_MIN_DROP) {
         blinkState.closedFrames += 1;
         blinkState.eyesClosed = true;
         updateLiveness({
