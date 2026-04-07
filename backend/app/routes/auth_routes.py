@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, Form
 from app.controllers import auth_controller
 
 router = APIRouter()
@@ -10,5 +10,9 @@ async def health():
 
 
 @router.post("/authenticate")
-async def authenticate(file: UploadFile = File(...)):
-    return await auth_controller.authenticate(file)
+async def authenticate(
+    file: UploadFile = File(...),
+    liveness_passed: bool = Form(False),
+    blink_count: int = Form(0),
+):
+    return await auth_controller.authenticate(file, liveness_passed, blink_count)

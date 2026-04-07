@@ -11,18 +11,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Web framework ─────────────────────────────────────────────────────────────
-fastapi==0.128.8
-uvicorn[standard]==0.34.0      # ASGI server (includes uvloop, watchfiles)
-python-multipart==0.0.20       # required for FastAPI Form / File uploads
+fastapi
+uvicorn[standard]      # ASGI server (includes uvloop, watchfiles)
+python-multipart      # required for FastAPI Form / File uploads
 
 # ── Face analysis ─────────────────────────────────────────────────────────────
-insightface==0.7.3             # ArcFace + RetinaFace (latest stable)
-onnxruntime==1.24.4          # CPU inference backend for InsightFace models
+insightface            # ArcFace + RetinaFace (latest stable)
+onnxruntime        # CPU inference backend for InsightFace models
                                # → swap for onnxruntime-gpu==1.24.4 for CUDA
 
 # ── Computer vision ───────────────────────────────────────────────────────────
-opencv-python-headless==4.11.0.86   # OpenCV without GUI (server-safe)  
-numpy==1.24.3                     # Array ops; InsightFace requires >=1.20
+opencv-python-headless   # OpenCV without GUI (server-safe)  
+numpy                  # Array ops; InsightFace requires >=1.20
 
 # ── Data validation ───────────────────────────────────────────────────────────
-pydantic==2.11.1               # Used by FastAPI for request/response models
+pydantic              # Used by FastAPI for request/response models

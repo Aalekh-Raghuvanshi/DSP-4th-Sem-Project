@@ -3,7 +3,7 @@ from fastapi import HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 import app.state as state
-from app.config import SIMILARITY_THRESHOLD, MARGIN_REQUIRED
+from app.config import SIMILARITY_THRESHOLD, MARGIN_REQUIRED, MIN_BLINKS_REQUIRED
 from app.utils.audit import write_audit
 from app.utils.face import decode_image, get_face, per_person_scores
 from app.utils.session import make_session
@@ -18,12 +18,27 @@ async def health():
         "users":       list(dict.fromkeys(state.known_names)) if state.known_names else [],
         "threshold":   SIMILARITY_THRESHOLD,
         "margin":      MARGIN_REQUIRED,
+        "min_blinks":  MIN_BLINKS_REQUIRED,
     }
 
 
-async def authenticate(file: UploadFile):
+async def authenticate(file: UploadFile, liveness_passed: bool = False, blink_count: int = 0):
     if state.known_embeddings is None or not state.known_names:
         raise HTTPException(503, "Face model not loaded — run train_model.py first.")
+
+    if not liveness_passed or blink_count < MIN_BLINKS_REQUIRED:
+        detail = f"Blink liveness check failed (need {MIN_BLINKS_REQUIRED} blink{'s' if MIN_BLINKS_REQUIRED != 1 else ''})."
+        write_audit("DENIED_LIVENESS", reason=detail)
+        return JSONResponse(
+            status_code=401,
+            content={
+                "success": False,
+                "authenticated": False,
+                "reason": "DENIED_LIVENESS",
+                "message": detail,
+                "blink_count": blink_count,
+            },
+        )
 
     raw = await file.read()
     try:
@@ -76,6 +91,7 @@ async def authenticate(file: UploadFile):
             "margin":           margin,
             "all_scores":       scores,
             "det_score":        round(float(face.det_score), 3),
+            "blink_count":      blink_count,
         }
 
     # ── Denial ────────────────────────────────────────────────────────────────
@@ -106,5 +122,6 @@ async def authenticate(file: UploadFile):
             "all_scores":       scores,
             "det_score":        round(float(face.det_score), 3),
             "message":          detail,
+            "blink_count":      blink_count,
         },
     )

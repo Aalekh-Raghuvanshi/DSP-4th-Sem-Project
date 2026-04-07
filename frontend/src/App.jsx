@@ -2,9 +2,21 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
 import { motion as Motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import "./App.css";
 
 const API = "http://localhost:8000";
+const MEDIAPIPE_WASM_URL = "/mediapipe";
+const MEDIAPIPE_MODEL_URL = "/models/face_landmarker.task";
+const EYE_INDICES = {
+  left: [33, 160, 158, 133, 153, 144],
+  right: [362, 385, 387, 263, 373, 380],
+};
+const BLINK_CALIBRATION_FRAMES = 12;
+const BLINK_MIN_BASELINE = 0.18;
+const BLINK_CLOSED_RATIO = 0.72;
+const BLINK_OPEN_RATIO = 0.9;
+const BLINK_MIN_CLOSED_FRAMES = 2;
 
 function b64ToBlob(b64) {
   const [header, data] = b64.split(",");
@@ -13,6 +25,25 @@ function b64ToBlob(b64) {
   const arr = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
   return new Blob([arr], { type: mime });
+}
+
+function pointDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function eyeAspectRatio(landmarks, [leftCorner, upperA, upperB, rightCorner, lowerA, lowerB]) {
+  const horizontal = pointDistance(landmarks[leftCorner], landmarks[rightCorner]);
+  if (!horizontal) return 0;
+
+  const verticalA = pointDistance(landmarks[upperA], landmarks[lowerA]);
+  const verticalB = pointDistance(landmarks[upperB], landmarks[lowerB]);
+  return (verticalA + verticalB) / (2 * horizontal);
+}
+
+function averageEyeAspectRatio(landmarks) {
+  const leftEar = eyeAspectRatio(landmarks, EYE_INDICES.left);
+  const rightEar = eyeAspectRatio(landmarks, EYE_INDICES.right);
+  return (leftEar + rightEar) / 2;
 }
 
 // ─── Scan overlay corners + scan line ─────────────────────────────────────────
@@ -61,6 +92,7 @@ function AuditLogModal({ onClose }) {
 
   const outcomeStyle = (o) => {
     if (o === "GRANTED")          return { color: "var(--green)",  bg: "rgba(0,255,157,.08)",  icon: "✓" };
+    if (o === "DENIED_LIVENESS")  return { color: "var(--danger)", bg: "rgba(255,60,92,.08)",  icon: "!" };
     if (o === "DENIED_MISMATCH")  return { color: "#ffc46c",       bg: "rgba(255,196,108,.08)",icon: "✗" };
     if (o === "DENIED_AMBIGUOUS") return { color: "#ffc46c",       bg: "rgba(255,196,108,.08)",icon: "?" };
     if (o === "NO_FACE")          return { color: "var(--muted)",  bg: "rgba(72,96,126,.08)",  icon: "—" };
@@ -69,7 +101,7 @@ function AuditLogModal({ onClose }) {
 
   const stats = {
     granted:  entries.filter(e => e.outcome === "GRANTED").length,
-    mismatch: entries.filter(e => e.outcome === "DENIED_MISMATCH" || e.outcome === "DENIED_AMBIGUOUS").length,
+    mismatch: entries.filter(e => ["DENIED_MISMATCH", "DENIED_AMBIGUOUS", "DENIED_LIVENESS"].includes(e.outcome)).length,
   };
 
   return (
@@ -301,6 +333,7 @@ function Landing({ onStart, enrolled, backendDown }) {
       <div className="landing-chips">
         <span className="chip">ArcFace 512-d</span>
         <span className="chip">Cosine Similarity</span>
+        <span className="chip">Blink Liveness</span>
         <span className="chip">Session Audit Log</span>
       </div>
 
@@ -319,41 +352,78 @@ function Landing({ onStart, enrolled, backendDown }) {
 
 // ─── Camera + auth screen ─────────────────────────────────────────────────────
 function CameraScreen({ onSuccess, onCancel }) {
-  const webcamRef               = useRef(null);
-  const autoScanStartedRef      = useRef(false);
+  const webcamRef = useRef(null);
+  const autoScanStartedRef = useRef(false);
+  const faceLandmarkerRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const blinkStateRef = useRef({
+    closedFrames: 0,
+    blinkCount: 0,
+    openSamples: [],
+    baselineEar: 0,
+    eyesClosed: false,
+  });
   const [camReady, setCamReady] = useState(false);
-  const [phase, setPhase]       = useState("ready");
-  const [countdown, setCountdown] = useState(null);
-  const [result, setResult]     = useState(null);
-
-  const runCountdown = (n) => new Promise(res => {
-    setCountdown(n);
-    const iv = setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) { clearInterval(iv); setCountdown(null); res(); return null; }
-        return c - 1;
-      });
-    }, 1000);
+  const [phase, setPhase] = useState("ready");
+  const [result, setResult] = useState(null);
+  const [liveness, setLiveness] = useState({
+    ready: false,
+    passed: false,
+    blinkCount: 0,
+    message: "Loading blink detector…",
   });
 
+  const updateLiveness = useCallback((patch) => {
+    setLiveness((current) => {
+      const next = { ...current, ...patch };
+      if (
+        current.ready === next.ready &&
+        current.passed === next.passed &&
+        current.blinkCount === next.blinkCount &&
+        current.message === next.message
+      ) {
+        return current;
+      }
+      return next;
+    });
+  }, []);
+
+  const resetBlinkTracking = useCallback((message = "Blink once to continue.") => {
+    blinkStateRef.current = {
+      closedFrames: 0,
+      blinkCount: 0,
+      openSamples: [],
+      baselineEar: 0,
+      eyesClosed: false,
+    };
+    updateLiveness({
+      ready: !!faceLandmarkerRef.current,
+      passed: false,
+      blinkCount: 0,
+      message: faceLandmarkerRef.current ? "Hold still while blink detection calibrates…" : "Loading blink detector…",
+    });
+  }, [updateLiveness]);
+
   const shoot = useCallback(async () => {
-    if (!camReady || phase !== "ready") return;
-    setPhase("countdown");
+    if (!camReady || phase !== "ready" || !liveness.passed) return;
+    setPhase("analyzing");
     setResult(null);
 
-    await runCountdown(3);
-
-    setPhase("analyzing");
-
     // Wait a frame so the webcam has a fresh image after the countdown overlay disappears
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     const shot = webcamRef.current?.getScreenshot({ width: 1280, height: 720 });
-    if (!shot) { setPhase("fail"); setResult({ message: "Camera capture failed" }); return; }
+    if (!shot) {
+      setPhase("fail");
+      setResult({ message: "Camera capture failed" });
+      return;
+    }
 
     const fd = new FormData();
     // Send WITHOUT flipping — backend handles both orientations
     fd.append("file", b64ToBlob(shot), "face.jpg");
+    fd.append("liveness_passed", "true");
+    fd.append("blink_count", String(liveness.blinkCount || 1));
 
     try {
       const { data } = await axios.post(`${API}/authenticate`, fd);
@@ -368,24 +438,171 @@ function CameraScreen({ onSuccess, onCancel }) {
       setResult(resp);
       setPhase("fail");
     }
-  }, [camReady, phase, onSuccess]);
+  }, [camReady, liveness.blinkCount, liveness.passed, onSuccess, phase]);
 
   useEffect(() => {
-    if (!camReady || phase !== "ready" || autoScanStartedRef.current) return;
+    let cancelled = false;
+
+    async function initFaceLandmarker() {
+      try {
+        const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
+        if (cancelled) return;
+
+        const detector = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MEDIAPIPE_MODEL_URL },
+          runningMode: "VIDEO",
+          numFaces: 1,
+        });
+
+        if (cancelled) {
+          detector.close();
+          return;
+        }
+
+        faceLandmarkerRef.current = detector;
+        resetBlinkTracking();
+      } catch (error) {
+        console.error("Failed to load blink detector", error);
+        if (!cancelled) {
+          updateLiveness({
+            ready: false,
+            passed: false,
+            blinkCount: 0,
+            message: "Blink detector unavailable. Check your connection and refresh.",
+          });
+        }
+      }
+    }
+
+    initFaceLandmarker();
+
+    return () => {
+      cancelled = true;
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      faceLandmarkerRef.current?.close();
+      faceLandmarkerRef.current = null;
+    };
+  }, [resetBlinkTracking, updateLiveness]);
+
+  useEffect(() => {
+    if (!camReady || phase !== "ready" || liveness.passed || !faceLandmarkerRef.current) return undefined;
+
+    const trackBlink = () => {
+      const video = webcamRef.current?.video;
+      const detector = faceLandmarkerRef.current;
+
+      if (!video || !detector || video.readyState < 2) {
+        animationFrameRef.current = requestAnimationFrame(trackBlink);
+        return;
+      }
+
+      const detection = detector.detectForVideo(video, performance.now());
+      const landmarks = detection.faceLandmarks?.[0];
+
+      if (!landmarks) {
+        blinkStateRef.current.closedFrames = 0;
+        blinkStateRef.current.openSamples = [];
+        blinkStateRef.current.baselineEar = 0;
+        blinkStateRef.current.eyesClosed = false;
+        updateLiveness({
+          ready: true,
+          passed: false,
+          blinkCount: blinkStateRef.current.blinkCount,
+          message: "Face not detected. Center your face in the frame.",
+        });
+        animationFrameRef.current = requestAnimationFrame(trackBlink);
+        return;
+      }
+
+      const ear = averageEyeAspectRatio(landmarks);
+      const blinkState = blinkStateRef.current;
+      const samples = [...blinkState.openSamples, ear].slice(-BLINK_CALIBRATION_FRAMES);
+      blinkState.openSamples = samples;
+
+      if (samples.length < BLINK_CALIBRATION_FRAMES) {
+        updateLiveness({
+          ready: true,
+          passed: false,
+          blinkCount: blinkState.blinkCount,
+          message: "Hold still while blink detection calibrates…",
+        });
+        animationFrameRef.current = requestAnimationFrame(trackBlink);
+        return;
+      }
+
+      const baselineEar = Math.max(BLINK_MIN_BASELINE, Math.max(...samples));
+      const closedThreshold = baselineEar * BLINK_CLOSED_RATIO;
+      const openThreshold = baselineEar * BLINK_OPEN_RATIO;
+      blinkState.baselineEar = baselineEar;
+
+      if (ear <= closedThreshold) {
+        blinkState.closedFrames += 1;
+        blinkState.eyesClosed = true;
+        updateLiveness({
+          ready: true,
+          passed: false,
+          blinkCount: blinkState.blinkCount,
+          message: "Blink detected. Open your eyes to continue.",
+        });
+      } else if (ear >= openThreshold) {
+        if (blinkState.eyesClosed && blinkState.closedFrames >= BLINK_MIN_CLOSED_FRAMES) {
+          blinkState.blinkCount += 1;
+          blinkState.closedFrames = 0;
+          blinkState.eyesClosed = false;
+          updateLiveness({
+            ready: true,
+            passed: true,
+            blinkCount: blinkState.blinkCount,
+            message: "Liveness verified. Starting scan…",
+          });
+          return;
+        }
+
+        blinkState.closedFrames = 0;
+        blinkState.eyesClosed = false;
+        updateLiveness({
+          ready: true,
+          passed: false,
+          blinkCount: blinkState.blinkCount,
+          message: "Blink once to continue.",
+        });
+      } else {
+        updateLiveness({
+          ready: true,
+          passed: false,
+          blinkCount: blinkState.blinkCount,
+          message: "Blink once to continue.",
+        });
+      }
+
+      animationFrameRef.current = requestAnimationFrame(trackBlink);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(trackBlink);
+
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    };
+  }, [camReady, liveness.passed, phase, updateLiveness]);
+
+  useEffect(() => {
+    if (!camReady || phase !== "ready" || !liveness.passed || autoScanStartedRef.current) return;
     const timeoutId = setTimeout(() => {
       autoScanStartedRef.current = true;
       shoot();
     }, 0);
     return () => clearTimeout(timeoutId);
-  }, [camReady, phase, shoot]);
+  }, [camReady, liveness.passed, phase, shoot]);
 
   const retry = () => {
     autoScanStartedRef.current = false;
     setPhase("ready");
     setResult(null);
+    resetBlinkTracking();
   };
 
-  const overlayPhase = { ready: "idle", countdown: "scanning", analyzing: "scanning", fail: "fail" }[phase] ?? "idle";
+  const overlayPhase = { ready: "idle", analyzing: "scanning", fail: "fail" }[phase] ?? "idle";
 
   return (
     <Motion.div
@@ -398,10 +615,9 @@ function CameraScreen({ onSuccess, onCancel }) {
         <button className="back-btn" onClick={onCancel}>← Back</button>
         <h2 className="cam-title">Face Scan</h2>
         <span className="cam-hint">
-          {phase === "ready"     && (camReady ? "Position your face in the frame" : "Starting camera…")}
-          {phase === "countdown" && "Hold still…"}
+          {phase === "ready" && (camReady ? liveness.message : "Starting camera…")}
           {phase === "analyzing" && "Analyzing…"}
-          {phase === "fail"      && "Not recognised"}
+          {phase === "fail" && "Authentication failed"}
         </span>
       </div>
 
@@ -422,47 +638,35 @@ function CameraScreen({ onSuccess, onCancel }) {
           onUserMedia={() => setCamReady(true)}
           onUserMediaError={() => setResult({ message: "Camera permission denied" })}
           className="webcam"
-          style={{ transform: "scaleX(-1)" }}   // mirror for natural look ONLY — captured bytes are correct
-          mirrored={false}                       // react-webcam: do NOT mirror the screenshot
+          style={{ transform: "scaleX(-1)" }}
+          mirrored={false}
         />
         <ScanOverlay phase={overlayPhase} />
 
-        {/* Countdown number */}
-        <AnimatePresence>
-          {countdown !== null && (
-            <Motion.div
-              key={countdown}
-              className="countdown"
-              initial={{ scale: 1.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.4, opacity: 0 }}
-              transition={{ duration: 0.22 }}
-            >
-              {countdown}
-            </Motion.div>
-          )}
-        </AnimatePresence>
+        {phase === "ready" && camReady && (
+          <div className={`cam-badge live-badge ${liveness.passed ? "pass" : ""}`}>
+            <span className={`pulse-dot ${liveness.passed ? "pass" : ""}`} />
+            {liveness.message}
+          </div>
+        )}
 
-        {/* Analyzing spinner */}
         {phase === "analyzing" && (
           <div className="cam-badge scanning-badge">
             <span className="pulse-dot" /> Analyzing…
           </div>
         )}
 
-        {/* Fail badge */}
         {phase === "fail" && (
           <Motion.div
             className="cam-badge fail-badge"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            ✗ Face not recognised
+            ✗ Authentication failed
           </Motion.div>
         )}
       </div>
 
-      {/* Action button */}
       <AnimatePresence mode="wait">
         {phase === "ready" && (
           <Motion.div
@@ -472,7 +676,13 @@ function CameraScreen({ onSuccess, onCancel }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
           >
-            {camReady ? "Starting scan automatically…" : "Starting camera…"}
+            {!camReady
+              ? "Starting camera…"
+              : !liveness.ready
+                ? "Loading blink detector…"
+                : liveness.passed
+                  ? "Liveness verified. Starting scan…"
+                  : "Blink once to continue…"}
           </Motion.div>
         )}
         {phase === "fail" && (
@@ -491,7 +701,6 @@ function CameraScreen({ onSuccess, onCancel }) {
         )}
       </AnimatePresence>
 
-      {/* Face mismatch detail card */}
       <AnimatePresence>
         {result && phase === "fail" && (
           <Motion.div
@@ -508,11 +717,16 @@ function CameraScreen({ onSuccess, onCancel }) {
                   : "No face detected — check lighting and camera angle"
               )}
             </p>
+            {result.reason === "DENIED_LIVENESS" && (
+              <p className="detail-hint">
+                A real blink is required before recognition starts. Keep your face centered and blink naturally once.
+              </p>
+            )}
             {result.all_scores && Object.keys(result.all_scores).length > 0 && (
               <div className="signals-block">
                 <p className="sig-heading">Similarity per enrolled user</p>
                 {Object.entries(result.all_scores)
-                  .sort(([,a],[,b]) => b - a)
+                  .sort(([, a], [, b]) => b - a)
                   .map(([name, score]) => (
                     <SignalRow key={name} label={name} value={Math.max(score, 0)} pass={score >= 0.45} />
                   ))}
@@ -546,8 +760,7 @@ export default function App() {
 
   const handleSuccess = (data) => {
     setAuthResult(data);
-    // Brief pause on camera screen so user sees the success state, then go to dashboard
-    setTimeout(() => setScreen("dashboard"), 600);
+    setScreen("dashboard");
   };
 
   const reset = () => {

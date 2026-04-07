@@ -1,97 +1,241 @@
-# NeuralGate v3 · Face Authentication
-## Face-detection based authentication to protect against deepfake attacks
-## Quick Start
+# NeuralGate
 
-### Step 1 — Add your face photos
+Face authentication system built with FastAPI, InsightFace, React, and MediaPipe blink-based liveness detection.
 
+## Features
+
+- Face recognition using InsightFace ArcFace embeddings
+- Blink-based liveness check before authentication
+- Audit log for granted and denied attempts
+- React frontend with webcam capture and dashboard
+- FastAPI backend for model loading, matching, and session creation
+
+## Project Structure
+
+```text
+backend/
+  app/
+    config.py
+    controllers/
+    routes/
+    utils/
+  faces/
+  trained_model/
+  main.py
+  requirements.txt
+
+frontend/
+  public/
+    mediapipe/
+    models/
+  src/
+  package.json
 ```
+
+## Requirements
+
+- Python 3.10+
+- Node.js 18+
+- npm
+
+## Setup
+
+### 1. Add training images
+
+Store training images like this:
+
+```text
 backend/faces/
 ├── yourname/
 │   ├── photo1.jpg
-│   ├── photo2.jpg   ← more photos = better accuracy
+│   ├── photo2.jpg
 │   └── photo3.jpg
 └── anotherperson/
-    └── photo.jpg
+    └── photo1.jpg
 ```
 
-Use clear, well-lit, **frontal face** photos of the person.Any format like JPG/PNG/BMP/WEBP will work.
+Tips:
 
----
+- Use clear, front-facing photos
+- Add 3 to 5 images per person when possible
+- Vary lighting and angle slightly
+- Avoid heavy shadows or sunglasses
 
-### Step 2 — Train the model
+### 2. Install backend dependencies
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+### 3. Train the face model
 
 ```bash
 cd backend
 python train_model.py
 ```
 
-Output:
-```
+Expected output looks similar to:
+
+```text
 ✅  Training complete!
-    Samples  : 3
-    People   : 1 — ['yourname']
+    Samples  : 6
+    People   : 2 — ['alice', 'bob']
     Saved to : trained_model/face_embeddings_insightface.pkl
 ```
 
-Re-run this whenever you add or change photos.So that the changes will be updated.
+Re-run training whenever you add or replace images in `backend/faces/`.
 
----
-
-### Step 3 — Start the backend
-
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-First run downloads the InsightFace `buffalo_l` model (~300 MB).
-
----
-
-### Step 4 — Start the frontend
+### 4. Install frontend dependencies
 
 ```bash
 cd frontend
 npm install
-npm run dev
-# Opens at http://localhost:3000
 ```
 
----
+### 5. Start the backend
 
-## How it works
+```bash
+cd backend
+uvicorn main:app --reload --port 8000
+```
 
-Training (`train_model.py`):
-- Loads each image with OpenCV
-- Runs InsightFace `app.get(img)` → takes `faces[0]`
-- Stores `face.normed_embedding` (512-d, L2-normalised ArcFace)
-- Saves all embeddings + names to a `.pkl` file
+Notes:
 
-Authentication (`main.py`):
-- Receives webcam frame
-- Tries original + horizontally-flipped (handles webcam mirror)
-- Extracts `normed_embedding` the exact same way as training
-- Computes `dot(probe, all_stored)` = cosine similarity
-- Returns best match if score passes the configured threshold
+- The first backend run may download the InsightFace `buffalo_l` model.
+- The backend listens on `http://localhost:8000`.
 
----
+### 6. Start the frontend
 
-## Tuning the threshold
+```bash
+cd frontend
+npm run dev
+```
 
-Edit `SIMILARITY_THRESHOLD` in `backend/main.py`:
+The frontend runs through Vite, usually at `http://localhost:5173`.
 
-| Value | Effect |
-|---|---|
-| `0.60` | Easier — good if same-person scores are low |
-| `0.75` | Current default — balanced |
-| `0.85` | Stricter — fewer false positives |
+## Authentication Flow
 
-When a scan fails, the UI shows the exact similarity score per enrolled person. Use that to decide if you need to lower the threshold or retrain with better photos.
+1. Open the frontend.
+2. Start authentication.
+3. Allow camera access.
+4. Hold your face in frame while the blink detector calibrates.
+5. Blink once.
+6. The app immediately captures a frame, sends it to the backend, and opens the dashboard on success.
 
----
+## How It Works
 
-## Tips for better recognition
+### Training
 
-- Use **3–5 photos per person** taken in different lighting/angles
-- Photos should be **at least 200×200px** with the face clearly visible
-- Avoid sunglasses, heavy shadows, or extreme angles in training photos
-- Good webcam lighting matters most — face the light source# DSP-4th-Sem-Project
+`backend/train_model.py`:
+
+- Loads images from `backend/faces/<person>/`
+- Detects faces with InsightFace
+- Extracts normalized face embeddings
+- Saves embeddings and labels into `backend/trained_model/face_embeddings_insightface.pkl`
+
+### Liveness Check
+
+Frontend liveness:
+
+- Uses MediaPipe face landmarks
+- Tracks both eyes from the live webcam stream
+- Calibrates against the user’s open-eye baseline
+- Requires a real blink before authentication starts
+
+MediaPipe assets are served locally from:
+
+- `frontend/public/mediapipe/`
+- `frontend/public/models/face_landmarker.task`
+
+### Authentication
+
+Backend authentication:
+
+- Accepts the captured webcam frame
+- Rejects the request if blink liveness did not pass
+- Detects the face from the uploaded image
+- Computes cosine similarity against enrolled embeddings
+- Applies a similarity threshold and match margin check
+- Creates a session token on success
+
+## Configuration
+
+Main backend settings are in `backend/app/config.py`:
+
+- `SIMILARITY_THRESHOLD`
+- `MARGIN_REQUIRED`
+- `MIN_BLINKS_REQUIRED`
+- `SESSION_TTL_MINUTES`
+
+Current defaults:
+
+```python
+SIMILARITY_THRESHOLD = 0.75
+MARGIN_REQUIRED = 0.10
+MIN_BLINKS_REQUIRED = 1
+SESSION_TTL_MINUTES = 30
+```
+
+## Audit Log
+
+Authentication events are written to:
+
+```text
+backend/audit_log.csv
+```
+
+Typical outcomes include:
+
+- `GRANTED`
+- `DENIED_MISMATCH`
+- `DENIED_AMBIGUOUS`
+- `DENIED_LIVENESS`
+- `NO_FACE`
+
+## Development
+
+Run frontend production build:
+
+```bash
+cd frontend
+npm run build
+```
+
+Run both apps together from the repository root:
+
+```bash
+npm run dev
+```
+
+## Troubleshooting
+
+### Blink is not detected
+
+- Keep your face centered and well lit
+- Wait for calibration to finish before blinking
+- Remove glare from glasses if possible
+- Refresh the frontend after code or asset changes
+
+### No face detected
+
+- Move closer to the camera
+- Improve lighting on your face
+- Look directly at the webcam
+
+### Authentication mismatch
+
+- Retrain with more images
+- Use clearer reference images
+- Lower `SIMILARITY_THRESHOLD` slightly if genuine users are rejected too often
+
+## Tech Stack
+
+- FastAPI
+- InsightFace
+- OpenCV
+- React
+- Vite
+- MediaPipe Tasks Vision
+- Framer Motion
+

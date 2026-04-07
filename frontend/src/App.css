@@ -89,8 +89,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--display);-webkit-f
 /* Badges */
 .cam-badge{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;padding:6px 18px;border-radius:20px;backdrop-filter:blur(8px);white-space:nowrap}
 .scanning-badge{color:var(--accent);background:rgba(6,8,16,.8);border:1px solid var(--border-b)}
+.live-badge{color:var(--accent);background:rgba(6,8,16,.8);border:1px solid var(--border-b);max-width:calc(100% - 28px);text-align:center}
+.live-badge.pass{color:var(--green);border-color:rgba(0,255,157,.4);background:rgba(0,255,157,.08)}
 .fail-badge{color:var(--danger);background:rgba(255,60,92,.08);border:1px solid rgba(255,60,92,.3)}
 .pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:blink .9s infinite}
+.pulse-dot.pass{background:var(--green)}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
 
 /* Countdown */
