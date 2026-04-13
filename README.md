@@ -1,35 +1,41 @@
 # NeuralGate
 
-Face authentication system built with FastAPI, InsightFace, React, and MediaPipe blink-based liveness detection.
+Secure Face Authentication System with anti-spoofing liveness detection.
+NeuralGate is a robust, real-time face authentication platform built for secure access control, attendance systems, or identity verification. It combines state-of-the-art deep learning (InsightFace ArcFace) for accurate recognition with MediaPipe-powered blink-based liveness detection to prevent spoofing attacks (photos, videos, or masks).
 
 ## Features
 
-- Face recognition using InsightFace ArcFace embeddings
-- Blink-based liveness check before authentication
-- Audit log for granted and denied attempts
-- React frontend with webcam capture and dashboard
-- FastAPI backend for model loading, matching, and session creation
+- **High-Accuracy Face Recognition** — Powered by InsightFace ArcFace embeddings for robust 1:1 and 1:N matching
+- **Anti-Spoofing Liveness Detection** — Blink-based verification using MediaPipe Face Landmarker to ensure a live person is present
+- **Comprehensive Audit Logging** — Detailed logging of all authentication attempts (granted/denied) with timestamps and reasons
+- **Modern React Frontend** — Responsive dashboard with live webcam feed, real-time feedback, and smooth animations (Framer Motion)
+- **FastAPI Backend** — High-performance async API with automatic model loading, cosine similarity matching, and secure session management
+- **Easy Enrollment** — Add new users by simply placing photos in a folder and retraining
 
 ## Project Structure
 
 ```text
-backend/
-  app/
-    config.py
-    controllers/
-    routes/
-    utils/
-  faces/
-  trained_model/
-  main.py
-  requirements.txt
-
-frontend/
-  public/
-    mediapipe/
-    models/
-  src/
-  package.json
+neuralgate/
+├── backend/
+│   ├── app/
+│   │   ├── config.py          # Core settings & thresholds
+│   │   ├── controllers/       # Business logic
+│   │   ├── routes/            # API endpoints
+│   │   └── utils/             # Helpers (image processing, similarity, etc.)
+│   ├── faces/                 # Enrollment images: faces/<person_name>/*.jpg
+│   ├── trained_model/         # face_embeddings_insightface.pkl
+│   ├── train_model.py
+│   ├── main.py
+│   └── requirements.txt
+├── frontend/
+│   ├── public/
+│   │   ├── mediapipe/         # Local MediaPipe assets
+│   │   └── models/
+│   │       └── face_landmarker.task
+│   ├── src/
+│   └── package.json
+├── audit_log.csv              # Generated automatically
+└── README.md
 ```
 
 ## Requirements
@@ -116,48 +122,37 @@ The frontend runs through Vite, usually at `http://localhost:5173`.
 
 ## Authentication Flow
 
-1. Open the frontend.
-2. Start authentication.
-3. Allow camera access.
-4. Hold your face in frame while the blink detector calibrates.
-5. Blink once.
-6. The app immediately captures a frame, sends it to the backend, and opens the dashboard on success.
+1. Open the frontend and click Start Authentication
+2. Grant camera permission
+3. Hold your face steady in the frame while the system calibrates open-eye baseline
+4. Perform one natural blink when prompted
+5. The system captures the frame, sends it to the backend, and grants access on success
+6. On successful authentication, a session is created and the dashboard opens
 
 ## How It Works
 
-### Training
+### Training Phase (train_model.py)
 
-`backend/train_model.py`:
+- Scans backend/faces/<person>/
+- Detects and aligns faces using InsightFace
+- Extracts 512-dimensional ArcFace embeddings
+- Saves normalized embeddings + labels to pickle file
 
-- Loads images from `backend/faces/<person>/`
-- Detects faces with InsightFace
-- Extracts normalized face embeddings
-- Saves embeddings and labels into `backend/trained_model/face_embeddings_insightface.pkl`
+### Liveness Detection (Frontend)
 
-### Liveness Check
+- MediaPipe Face Landmarker tracks eye landmarks in real-time
+- Computes Eye Aspect Ratio (EAR) or blendshape-based openness
+- Calibrates against user's natural open-eye state
+- Requires a confirmed blink (MIN_BLINKS_REQUIRED) before capture
 
-Frontend liveness:
+### Authentication (Backend)
 
-- Uses MediaPipe face landmarks
-- Tracks both eyes from the live webcam stream
-- Calibrates against the user’s open-eye baseline
-- Requires a real blink before authentication starts
-
-MediaPipe assets are served locally from:
-
-- `frontend/public/mediapipe/`
-- `frontend/public/models/face_landmarker.task`
-
-### Authentication
-
-Backend authentication:
-
-- Accepts the captured webcam frame
-- Rejects the request if blink liveness did not pass
-- Detects the face from the uploaded image
-- Computes cosine similarity against enrolled embeddings
-- Applies a similarity threshold and match margin check
-- Creates a session token on success
+- Validates that liveness check passed
+- Detects face in uploaded frame
+- Extracts embedding
+- Computes cosine similarity against enrolled templates
+- Applies configurable threshold + margin check
+- Creates time-limited session token on success
 
 ## Configuration
 
@@ -171,8 +166,8 @@ Main backend settings are in `backend/app/config.py`:
 Current defaults:
 
 ```python
-SIMILARITY_THRESHOLD = 0.75
-MARGIN_REQUIRED = 0.10
+SIMILARITY_THRESHOLD = 0.75      # Minimum cosine similarity (0.0–1.0)
+MARGIN_REQUIRED = 0.10           # Difference required from second-best match
 MIN_BLINKS_REQUIRED = 1
 SESSION_TTL_MINUTES = 30
 ```
@@ -193,6 +188,12 @@ Typical outcomes include:
 - `DENIED_LIVENESS`
 - `NO_FACE`
 
+## 🛡️ Security & Best Practices
+- **Liveness Protection**: Blink detection helps mitigate photo/video spoofing
+- **Server-Side Matching**: Embeddings are never exposed to the client
+- **Session Management**: Time-limited tokens (configurable TTL)
+- **No Persistent Sensitive Data**: Only embeddings (not raw images) are stored after training
+  
 ## Development
 
 Run frontend production build:
@@ -229,13 +230,11 @@ npm run dev
 - Use clearer reference images
 - Lower `SIMILARITY_THRESHOLD` slightly if genuine users are rejected too often
 
-## Tech Stack
+## 🛠 Tech Stack
 
-- FastAPI
-- InsightFace
-- OpenCV
-- React
-- Vite
-- MediaPipe Tasks Vision
-- Framer Motion
+- **Backend**: FastAPI, InsightFace (ArcFace), OpenCV, Python 3.10+
+- **Frontend**: React + Vite, MediaPipe Tasks Vision, Framer Motion
+- **Liveness**: MediaPipe Face Landmarker (blink detection via Eye Aspect Ratio / landmarks)
+- **Storage**: Pickle for embeddings, CSV for audit logs
+- **Others**: Uvicorn, npm
 
